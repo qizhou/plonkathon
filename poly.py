@@ -162,6 +162,14 @@ class Polynomial:
         )
         return Polynomial(x_powers, Basis.MONOMIAL).fft()
 
+    def coeffs_to_extended_lagrange(self, offset, group_order):
+        assert self.basis == Basis.MONOMIAL
+        x_powers = self.values
+        x_powers = [(offset**i * x) for i, x in enumerate(x_powers)] + [Scalar(0)] * (
+            4 * group_order - len(x_powers)
+        )
+        return Polynomial(x_powers, Basis.MONOMIAL).fft()
+
     # Convert from offset form into coefficients
     # Note that we can't make a full inverse function of to_coset_extended_lagrange
     # because the output of this might be a deg >= n polynomial, which cannot
