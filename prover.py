@@ -203,7 +203,6 @@ class Prover:
         # Expand permutation grand product polynomial Z into coset extended
         # Lagrange basis
         Z_big = self.fft_expand(self.Z)
-        print(Z_big.values)
 
         # Expand shifted Z(ωx) into coset extended Lagrange basis ?
         Z_shift_big = self.fft_expand(Polynomial(self.Z.values[1:] + [self.Z.values[0]], Basis.LAGRANGE))
@@ -267,6 +266,11 @@ class Prover:
         T2 = Polynomial(T.values[group_order:2*group_order], Basis.MONOMIAL).fft()
         T3 = Polynomial(T.values[2*group_order:3*group_order], Basis.MONOMIAL).fft()
 
+        self.T = T
+        self.T1 = T1
+        self.T2 = T2
+        self.T3 = T3
+
         # Sanity check that we've computed T1, T2, T3 correctly
         assert (
             T1.barycentric_eval(fft_cofactor)
@@ -287,6 +291,7 @@ class Prover:
 
     def round_4(self) -> Message4:
         # Compute evaluations to be used in constructing the linearization polynomial.
+        ru = Scalar.root_of_unity(self.group_order)
 
         # Compute a_eval = A(zeta)
         a_eval = self.A.barycentric_eval(self.zeta)
@@ -299,19 +304,45 @@ class Prover:
         # Compute s2_eval = pk.S2(zeta)
         s2_eval = self.pk.S2.barycentric_eval(self.zeta)
         # Compute z_shifted_eval = Z(zeta * ω)
-        z_shifted_eval = self.Z.barycentric_eval(self.zeta)
+        z_shifted_eval = self.Z.barycentric_eval(self.zeta * ru)
 
         # Return a_eval, b_eval, c_eval, s1_eval, s2_eval, z_shifted_eval
-        return Message4(a_eval, b_eval, c_eval, s1_eval, s2_eval, z_shifted_eval)
+        self.msg4 = Message4(a_eval, b_eval, c_eval, s1_eval, s2_eval, z_shifted_eval)
+        return self.msg4
 
     def round_5(self) -> Message5:
+        group_order = self.group_order
+        ru = Scalar.root_of_unity(group_order)
+        setup = self.setup
+
+        zeta = self.zeta
+
         # Evaluate the Lagrange basis polynomial L0 at zeta
+        L0_zeta = Polynomial([Scalar(1)] + [Scalar(0)] * (group_order - 1), Basis.LAGRANGE).barycentric_eval(zeta)
+
         # Evaluate the vanishing polynomial Z_H(X) = X^n - 1 at zeta
+        ZH_zeta = (zeta ** group_order) - Scalar(1)
 
         # Move T1, T2, T3 into the coset extended Lagrange basis
+        T1_big = self.fft_expand(self.T1)
+        T2_big = self.fft_expand(self.T2)
+        T3_big = self.fft_expand(self.T3)
+
         # Move pk.QL, pk.QR, pk.QM, pk.QO, pk.QC into the coset extended Lagrange basis
+        QL_big = self.fft_expand(self.pk.QL)
+        QR_big = self.fft_expand(self.pk.QR)
+        QM_big = self.fft_expand(self.pk.QM)
+        QO_big = self.fft_expand(self.pk.QO)
+        QC_big = self.fft_expand(self.pk.QC)
+
+        # Expand public inputs polynomial PI into coset extended Lagrange
+        PI_big = self.fft_expand(self.PI)
+
         # Move Z into the coset extended Lagrange basis
+        Z_big = self.fft_expand(self.Z)
+
         # Move pk.S3 into the coset extended Lagrange basis
+        S3_big = self.fft_expand(self.pk.S3)
 
         # Compute the "linearization polynomial" R. This is a clever way to avoid
         # needing to provide evaluations of _all_ the polynomials that we are
@@ -327,18 +358,41 @@ class Prover:
         # proof item once; any further multiplicands in each term need to be
         # replaced with their evaluations at Z, which do still need to be provided
 
+        A_zeta = self.A.barycentric_eval(zeta)
+        B_zeta = self.B.barycentric_eval(zeta)
+        C_zeta = self.C.barycentric_eval(zeta)
+        Z_shift_zeta = self.Z.barycentric_eval(zeta * ru)
+        S1_zeta = self.pk.S1.barycentric_eval(zeta)
+        S2_zeta = self.pk.S2.barycentric_eval(zeta)
+        # P0_big_zeta = QL_big * A_zeta + QR_big * B_zeta + QM_big * (A_zeta * B_zeta) + QO_big * C_zeta + PI_big + QC_big
+        # P1_big_zeta = (self.rlc(S3_big, C_zeta) * Z_shift_zeta * self.rlc(A_zeta, S1_zeta) * self.rlc(B_zeta, S2_zeta) - Z_big * self.rlc(A_zeta, zeta) * self.rlc(B_zeta, zeta * 2) * self.rlc(C_zeta, zeta * 3)) * self.alpha
+        # P2_big_zeta =  (Z_big - Scalar(1)) * L0_zeta * (self.alpha ** 2)
+        # RHS_big_zeta =  (T1_big + T2_big * zeta ** group_order + T3_big * zeta ** (group_order * 2)) * ZH_zeta
+        P0_zeta = self.pk.QL * A_zeta + self.pk.QR * B_zeta + self.pk.QM * (A_zeta * B_zeta) + self.pk.QO * C_zeta + self.PI + self.pk.QC
+        P1_zeta = (self.rlc1(C_zeta, self.pk.S3) * Z_shift_zeta * self.rlc(A_zeta, S1_zeta) * self.rlc(B_zeta, S2_zeta) - self.Z * self.rlc(A_zeta, zeta) * self.rlc(B_zeta, zeta * 2) * self.rlc(C_zeta, zeta * 3))
+        P2_zeta =  (self.Z - Scalar(1)) * L0_zeta
+        RHS_zeta = (self.T1 + self.T2 * zeta ** group_order + self.T3 * zeta ** (group_order * 2)) * ZH_zeta
+        R = P0_zeta + P1_zeta * self.alpha + P2_zeta * self.alpha ** 2 - RHS_zeta
+
         # Commit to R
+        R_commit = setup.commit(R)
 
         # Sanity-check R
         assert R.barycentric_eval(zeta) == 0
 
         print("Generated linearization polynomial R")
 
+        # W(z) = R(z) + v * A(z) + v^2 * B(z) + v^3 * C(z) + v^4 * S1(z) + v^5 * S2(z) 
         # Generate proof that W(z) = 0 and that the provided evaluations of
         # A, B, C, S1, S2 are correct
 
         # Move A, B, C into the coset extended Lagrange basis
-        # Move pk.S1, pk.S2 into the coset extended Lagrange basis
+        # TODO: Do we need to use coset as zeta is not ru^x
+        # A_big = self.fft_expand(A)
+        # B_big = self.fft_expand(B)
+        # C_big = self.fft_expand(C)
+        # # Move pk.S1, pk.S2 into the coset extended Lagrange basis
+        # S1_big = self.
 
         # In the COSET EXTENDED LAGRANGE BASIS,
         # Construct W_Z = (
@@ -382,3 +436,6 @@ class Prover:
 
     def rlc(self, term_1, term_2):
         return term_1 + term_2 * self.beta + self.gamma
+
+    def rlc1(self, term_1, term_2):
+        return term_2 * self.beta + term_1 + self.gamma
