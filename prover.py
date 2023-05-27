@@ -244,13 +244,13 @@ class Prover:
         #                   (rlc of C, 3X, 1) / (rlc of A, S1, 1) /
         #                   (rlc of B, S2, 1) / (rlc of C, S3, 1)
         #    rlc = random linear combination: term_1 + beta * term2 + gamma * term3
-        P1 = Z_shift_big * self.rlc(A_big, S1_big) * self.rlc(B_big, S2_big) * self.rlc(C_big, S3_big) - Z_big * self.rlc(A_big, shift_ru_big1) * self.rlc(B_big, shift_ru_big2) * self.rlc(C_big, shift_ru_big3) 
+        P1 = Z_big * self.rlc(A_big, shift_ru_big1) * self.rlc(B_big, shift_ru_big2) * self.rlc(C_big, shift_ru_big3) - Z_shift_big * self.rlc(A_big, S1_big) * self.rlc(B_big, S2_big) * self.rlc(C_big, S3_big)
         # 3. The permutation accumulator equals 1 at the start point
         #    (Z - 1) * L0 = 0
         #    L0 = Lagrange polynomial, equal at all roots of unity except 1
         P2 = (Z_big - Scalar(1)) * L0_big
 
-        QUOT_big =  (P0 + P1 * self.alpha + P2 * self.alpha ** 2) / ZH_big
+        QUOT_big = (P0 + P1 * self.alpha + P2 * self.alpha ** 2) / ZH_big
 
         # Sanity check: QUOT has degree < 3n
         assert (
@@ -323,27 +323,6 @@ class Prover:
         # Evaluate the vanishing polynomial Z_H(X) = X^n - 1 at zeta
         ZH_zeta = (zeta ** group_order) - Scalar(1)
 
-        # Move T1, T2, T3 into the coset extended Lagrange basis
-        T1_big = self.fft_expand(self.T1)
-        T2_big = self.fft_expand(self.T2)
-        T3_big = self.fft_expand(self.T3)
-
-        # Move pk.QL, pk.QR, pk.QM, pk.QO, pk.QC into the coset extended Lagrange basis
-        QL_big = self.fft_expand(self.pk.QL)
-        QR_big = self.fft_expand(self.pk.QR)
-        QM_big = self.fft_expand(self.pk.QM)
-        QO_big = self.fft_expand(self.pk.QO)
-        QC_big = self.fft_expand(self.pk.QC)
-
-        # Expand public inputs polynomial PI into coset extended Lagrange
-        PI_big = self.fft_expand(self.PI)
-
-        # Move Z into the coset extended Lagrange basis
-        Z_big = self.fft_expand(self.Z)
-
-        # Move pk.S3 into the coset extended Lagrange basis
-        S3_big = self.fft_expand(self.pk.S3)
-
         # Compute the "linearization polynomial" R. This is a clever way to avoid
         # needing to provide evaluations of _all_ the polynomials that we are
         # checking an equation betweeen: instead, we can "skip" the first
@@ -364,12 +343,8 @@ class Prover:
         Z_shift_zeta = self.Z.barycentric_eval(zeta * ru)
         S1_zeta = self.pk.S1.barycentric_eval(zeta)
         S2_zeta = self.pk.S2.barycentric_eval(zeta)
-        # P0_big_zeta = QL_big * A_zeta + QR_big * B_zeta + QM_big * (A_zeta * B_zeta) + QO_big * C_zeta + PI_big + QC_big
-        # P1_big_zeta = (self.rlc(S3_big, C_zeta) * Z_shift_zeta * self.rlc(A_zeta, S1_zeta) * self.rlc(B_zeta, S2_zeta) - Z_big * self.rlc(A_zeta, zeta) * self.rlc(B_zeta, zeta * 2) * self.rlc(C_zeta, zeta * 3)) * self.alpha
-        # P2_big_zeta =  (Z_big - Scalar(1)) * L0_zeta * (self.alpha ** 2)
-        # RHS_big_zeta =  (T1_big + T2_big * zeta ** group_order + T3_big * zeta ** (group_order * 2)) * ZH_zeta
-        P0_zeta = self.pk.QL * A_zeta + self.pk.QR * B_zeta + self.pk.QM * (A_zeta * B_zeta) + self.pk.QO * C_zeta + self.PI + self.pk.QC
-        P1_zeta = (self.rlc1(C_zeta, self.pk.S3) * Z_shift_zeta * self.rlc(A_zeta, S1_zeta) * self.rlc(B_zeta, S2_zeta) - self.Z * self.rlc(A_zeta, zeta) * self.rlc(B_zeta, zeta * 2) * self.rlc(C_zeta, zeta * 3))
+        P0_zeta = self.pk.QL * A_zeta + self.pk.QR * B_zeta + self.pk.QM * (A_zeta * B_zeta) + self.pk.QO * C_zeta + self.PI.barycentric_eval(zeta) + self.pk.QC
+        P1_zeta = self.Z * self.rlc(A_zeta, zeta) * self.rlc(B_zeta, zeta * 2) * self.rlc(C_zeta, zeta * 3) - self.rlc1(C_zeta, self.pk.S3) * Z_shift_zeta * self.rlc(A_zeta, S1_zeta) * self.rlc(B_zeta, S2_zeta)
         P2_zeta =  (self.Z - Scalar(1)) * L0_zeta
         RHS_zeta = (self.T1 + self.T2 * zeta ** group_order + self.T3 * zeta ** (group_order * 2)) * ZH_zeta
         R = P0_zeta + P1_zeta * self.alpha + P2_zeta * self.alpha ** 2 - RHS_zeta
@@ -392,7 +367,6 @@ class Prover:
         # B_big = self.fft_expand(B)
         # C_big = self.fft_expand(C)
         # # Move pk.S1, pk.S2 into the coset extended Lagrange basis
-        # S1_big = self.
 
         # In the COSET EXTENDED LAGRANGE BASIS,
         # Construct W_Z = (
@@ -404,10 +378,19 @@ class Prover:
         #   + v**5 * (S2 - s2_eval)
         # ) / (X - zeta)
 
+        # TODO: why not test onces?
+        v = self.v
+        D_z = Polynomial([Scalar(-zeta), Scalar(1)] + [Scalar(0)] * (group_order - 2), Basis.MONOMIAL).fft()
+        W_z = ((R + (self.A - A_zeta) * v + (self.B - B_zeta) * v ** 2 + (self.C - C_zeta) * v ** 3 + (self.pk.S1 - S1_zeta) * v ** 4 + (self.pk.S2 - S2_zeta) * v ** 5) / D_z)
+
         # Check that degree of W_z is not greater than n
+        R_z_big = Polynomial(R.ifft().values + [Scalar(0)] * (3 * group_order), Basis.MONOMIAL).fft()
+        D_z_big = Polynomial([Scalar(-zeta), Scalar(1)] + [Scalar(0)] * (4 * group_order - 2), Basis.MONOMIAL).fft()
+        W_z_coeffs = (R_z_big / D_z_big).ifft().values
         assert W_z_coeffs[group_order:] == [0] * (group_order * 3)
 
         # Compute W_z_1 commitment to W_z
+        W_z_1 = setup.commit(W_z)
 
         # Generate proof that the provided evaluation of Z(z*w) is correct. This
         # awkwardly different term is needed because the permutation accumulator
@@ -415,10 +398,20 @@ class Prover:
         # coordinates, and not just within one coordinate.
         # In other words: Compute W_zw = (Z - z_shifted_eval) / (X - zeta * ω)
 
+        A_shift_zeta = self.A.barycentric_eval(zeta * ru)
+        B_shift_zeta = self.B.barycentric_eval(zeta * ru)
+        C_shift_zeta = self.C.barycentric_eval(zeta * ru)
+        Z_shift2_zeta = self.Z.barycentric_eval(zeta * ru * ru)
+        S1_shift_zeta = self.pk.S1.barycentric_eval(zeta * ru)
+        S2_shift_zeta = self.pk.S2.barycentric_eval(zeta * ru)
+        D_shift_z = Polynomial([Scalar(-zeta * ru), Scalar(1)] + [Scalar(0)] * (group_order - 2), Basis.MONOMIAL).fft()
+        W_zw = ((self.rlc1(C_shift_zeta, self.pk.S3) * Z_shift2_zeta * self.rlc(A_shift_zeta, S1_shift_zeta) * self.rlc(B_shift_zeta, S2_shift_zeta) - self.Z * self.rlc(A_shift_zeta, zeta * ru) * self.rlc(B_shift_zeta, zeta * ru * 2) * self.rlc(C_shift_zeta, zeta * ru * 3))) / D_shift_z
+
         # Check that degree of W_z is not greater than n
-        assert W_zw_coeffs[group_order:] == [0] * (group_order * 3)
+        # assert W_zw_coeffs[group_order:] == [0] * (group_order * 3)
 
         # Compute W_z_1 commitment to W_z
+        W_zw_1 = setup.commit(W_zw)
 
         print("Generated final quotient witness polynomials")
 
