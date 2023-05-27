@@ -398,14 +398,8 @@ class Prover:
         # coordinates, and not just within one coordinate.
         # In other words: Compute W_zw = (Z - z_shifted_eval) / (X - zeta * ω)
 
-        A_shift_zeta = self.A.barycentric_eval(zeta * ru)
-        B_shift_zeta = self.B.barycentric_eval(zeta * ru)
-        C_shift_zeta = self.C.barycentric_eval(zeta * ru)
-        Z_shift2_zeta = self.Z.barycentric_eval(zeta * ru * ru)
-        S1_shift_zeta = self.pk.S1.barycentric_eval(zeta * ru)
-        S2_shift_zeta = self.pk.S2.barycentric_eval(zeta * ru)
         D_shift_z = Polynomial([Scalar(-zeta * ru), Scalar(1)] + [Scalar(0)] * (group_order - 2), Basis.MONOMIAL).fft()
-        W_zw = ((self.rlc1(C_shift_zeta, self.pk.S3) * Z_shift2_zeta * self.rlc(A_shift_zeta, S1_shift_zeta) * self.rlc(B_shift_zeta, S2_shift_zeta) - self.Z * self.rlc(A_shift_zeta, zeta * ru) * self.rlc(B_shift_zeta, zeta * ru * 2) * self.rlc(C_shift_zeta, zeta * ru * 3))) / D_shift_z
+        W_zw = (self.Z - Z_shift_zeta) / D_shift_z
 
         # Check that degree of W_z is not greater than n
         # assert W_zw_coeffs[group_order:] == [0] * (group_order * 3)
